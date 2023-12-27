@@ -10,19 +10,23 @@ interface Options {
   withBark?: false | string
 }
 
-export async function doAttendanceForAccount(token: string, options: Options) {
+const status = {
+  /** 签到失败状态记录，false 表示没有失败，true 表示含有失败 */
+  checkInError: false
+}
+
+export async function doAttendanceForAccount(token: string, options: Options, accountCount: number, index: number) {
   const { code } = await auth(token)
   const { cred, token: signToken } = await signIn(code)
   const { list } = await getBinding(cred, signToken)
 
   const createCombinePushMessage = () => {
     const messages: string[] = []
-    let hasError = false
     const logger = (message: string, error?: boolean) => {
       messages.push(message)
       console[error ? 'error' : 'log'](message)
-      if (error && !hasError)
-        hasError = true
+      if (error && !status.checkInError)
+        status.checkInError = true
     }
     const push
       = async () => {
@@ -40,8 +44,8 @@ export async function doAttendanceForAccount(token: string, options: Options) {
             messages.join('\n\n'),
           )
         }
-        // quit with error
-        if (hasError)
+        // quit with error on last account
+        if (status.checkInError && index >= accountCount)
           process.exit(1)
       }
     const add = (message: string) => {
@@ -78,13 +82,13 @@ export async function doAttendanceForAccount(token: string, options: Options) {
     if (data.code === 0 && data.message === 'OK') {
       const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到成功${`, 获得了${data.data.awards.map(a => `「${a.resource.name}」${a.count}个`).join(',')}`}`
       combineMessage(msg)
-      successAttendance++
+      combineMessage(`成功签到${successAttendance++}个角色`)
     }
     else {
       const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到失败${`, 错误消息: ${data.message}\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``}`
       combineMessage(msg, true)
     }
   }))
-  combineMessage(`成功签到${successAttendance}个角色`)
+
   await excutePushMessage()
 }
