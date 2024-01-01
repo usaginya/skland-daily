@@ -3,8 +3,6 @@ name: attendance
 on:
   schedule:
     - cron: '55 23 * * *'
-    - cron: '26 0 * * *'
-    - cron: '8 1 * * *'
   workflow_dispatch:
 
 jobs:
@@ -42,7 +40,22 @@ jobs:
         run: pnpm install
 
       - name: Run daily attendance
-        run: pnpm attendance
+        run:  |
+          attempt=0
+          max_attempts=3
+          until pnpm attendance
+          do
+            exit_code=$?
+            attempt=$((attempt+1))
+            if [ $attempt -lt $max_attempts ]; then
+              echo "失败，3分钟左右后重试第 $attempt 次，最多重试 $max_attempts 次，退出码 $exit_code。"
+              sleep 182056
+            else
+              echo "所有 $max_attempts 次重试均失败，退出码 $exit_code。不再重试。"
+              exit $exit_code
+            fi
+          done
+          echo "命令在第 $attempt 次尝试后成功执行。"
         env:
           SKLAND_TOKEN: ${{ secrets.SKLAND_TOKEN }}
           SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
