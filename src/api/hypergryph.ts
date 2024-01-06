@@ -17,13 +17,13 @@ export async function auth(token: string) {
     }),
   })
   try {
-    const data = await response.json()
-    const auth = data as AuthResponse
-    if (auth.status !== 0 || !auth.data)
-      throw new Error(`登录获取 cred 错误:${auth.msg}`)
+    const json = await response.json()
+    const data = json as AuthResponse
+    if (data.status !== 0 || !data.data)
+      throw new Error(`登录获取 cred 错误:${data.msg}`)
   } catch (e) {
-    throw new Error(`登录错误:\n${data}`)
+    throw new Error(`登录错误:\n${json}`)
   }
 
-  return auth.data
+  return data.data
 }
