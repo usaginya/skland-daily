@@ -16,9 +16,14 @@ export async function auth(token: string) {
       type: 0,
     }),
   })
-  const data = await response.json() as AuthResponse
-  if (data.status !== 0 || !data.data)
-    throw new Error(`登录获取 cred 错误:${data.msg}\n${data}`)
+  try {
+    const data = await response.json()
+    const auth = data as AuthResponse
+    if (auth.status !== 0 || !auth.data)
+      throw new Error(`登录获取 cred 错误:${auth.msg}`)
+  } catch (e) {
+    throw new Error(`登录错误:\n${data}`)
+  }
 
-  return data.data
+  return auth.data
 }
