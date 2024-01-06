@@ -19,7 +19,8 @@ export async function auth(token: string) {
   const json = await response.json()
   const data = json as AuthResponse
   if (data.status !== 0 || !data.data)
-    throw new Error(`登录获取 cred 错误:${data.msg}\n${json}`)
+    throw new Error(`登录获取 cred 错误:${data.msg}
+    ${ JSON.stringify(json, null, 2) }`)
 
   return data.data
 }
