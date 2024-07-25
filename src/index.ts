@@ -16,7 +16,7 @@ const status = {
 }
 
 export async function doAttendanceForAccount(token: string, options: Options, accountCount: number, index: number) {
-  const { code } = await auth(token)
+  const { code } = await auth(token, index)
   const { cred, token: signToken } = await signIn(code)
   const { list } = await getBinding(cred, signToken)
 
