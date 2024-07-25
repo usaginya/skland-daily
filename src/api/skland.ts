@@ -7,6 +7,7 @@ import { command_header, generateSignature } from '../utils'
  * @param grant_code 从 OAuth 接口获取的 grant_code
  */
 export async function signIn(grant_code: string) {
+  if (grant_code == null) return { cred: null, token: 'singIn(gran_code = null)' }
   const response = await fetch(CRED_CODE_URL, {
     method: 'POST',
     headers: Object.assign({
@@ -17,10 +18,14 @@ export async function signIn(grant_code: string) {
       kind: 1,
     }),
   })
-  const data = await response.json() as CredResponse
+  const json = await response.json()
+  const data = json as CredResponse
 
-  if (data.code !== 0)
-    throw new Error(`登录获取 cred 错误:${data.message}`)
+  if (data.code !== 0) {
+    data.data.cred = null
+    data.data.token = data.message
+    console.warn(JSON.stringify(json, null, 2))
+  }
 
   return data.data
 }
@@ -30,14 +35,20 @@ export async function signIn(grant_code: string) {
  * @param token 森空岛用户的 token
  */
 export async function getBinding(cred: string, token: string) {
+  if (cred == null) return { list: [{ appCode: null, appName: 'getBindding(cred = null)' }] }
   const url = new URL(BINDING_URL)
   const [sign, headers] = generateSignature(token, url)
   const response = await fetch(BINDING_URL, {
     headers: Object.assign(headers, { sign, cred }),
   })
-  const data = await response.json() as BindingResponse
-  if (data.code !== 0)
-    throw new Error(`获取绑定角色错误:${data.message}`)
+
+  const json = await response.json()
+  const data = json as BindingResponse
+  if (data.code !== 0) {
+    data.data[0].appCode = null
+    data.data[0].appName = data.message
+    console.warn(JSON.stringify(json, null, 2))
+  }
 
   return data.data
 }

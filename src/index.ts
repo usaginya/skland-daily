@@ -16,10 +16,6 @@ const status = {
 }
 
 export async function doAttendanceForAccount(token: string, options: Options, accountCount: number, index: number) {
-  const { code } = await auth(token, index)
-  const { cred, token: signToken } = await signIn(code)
-  const { list } = await getBinding(cred, signToken)
-
   const createCombinePushMessage = () => {
     const messages: string[] = []
     const logger = (message: string, error?: boolean) => {
@@ -55,6 +51,31 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
   }
 
   const [combineMessage, excutePushMessage, addMessage] = createCombinePushMessage()
+
+  const logginFailed = async (message: string) => {
+    combineMessage(`登录第${index}个账号失败，已跳过签到: ${message}`, true)
+    await excutePushMessage()
+  }
+
+  // 获取登录信息失败时，推送失败提示，然后跳过登录失败的账号并继续下一个账号
+  const { code, uid } = await auth(token, index)
+  if (code === null) {
+    await logginFailed(uid)
+    return
+  }
+
+  const { cred, token: signToken } = await signIn(code)
+  if (cred === null && signToken !== null) {
+    await logginFailed(signToken)
+    return
+  }
+
+  const { list } = await getBinding(cred, signToken)
+  if (list.length > 0 && list[0].appCode === null && list[0].appName !== null) {
+    await logginFailed(list[0].appName)
+    return
+  }
+
 
   addMessage(`# 森空岛每日签到 \n\n> ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Shanghai' }).format(new Date())}`)
   addMessage('## 森空岛各版面每日检票')
