@@ -38,36 +38,35 @@ export async function signIn(grant_code: string) {
  */
 export async function getBinding(cred: string, token: string) {
   if (cred == null) {
-    return { list: [{ appCode: null, appName: 'getBinding(cred = null)' }] };
+    return { list: [{ appCode: null, appName: 'getBinding(cred = null)' }] }
   }
 
-  const url = new URL(BINDING_URL);
-  const [sign, headers] = generateSignature(token, url);
+  const url = new URL(BINDING_URL)
+  const [sign, headers] = generateSignature(token, url)
   const requestOptions = {
     headers: { ...headers, sign, cred },
   }
 
-  let response: Response | null = null;
+  let responseBody: string | null = null
 
   try {
-    response = await fetch(BINDING_URL, requestOptions)
-    const json = await response.json()
+    const response = await fetch(BINDING_URL, requestOptions)
+    responseBody = await response.text()
+    const json = JSON.parse(responseBody)
     const data = json as BindingResponse
 
     if (data.code !== 0) {
-      data.data[0].appCode = null;
-      data.data[0].appName = data.message;
-      console.warn(JSON.stringify(json, null, 2));
+      data.data[0].appCode = null
+      data.data[0].appName = data.message
+      console.warn(JSON.stringify(json, null, 2))
     }
-    return data.data;
+    return data.data
 
   } catch (error) {
-    if (response) {
-      console.error('Response body:', await response.text());
-    } else {
-      console.error('Fetch error without response:', error);
+    if (responseBody) {
+      console.error('Response body:', responseBody)
     }
-    throw error;
+    throw error
   }
 }
 
