@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto'
 
 export const command_header = {
-  'User-Agent': 'Skland/1.5.1 (com.hypergryph.skland; build:100501001; Android 34; ) Okhttp/4.11.0',
+  'User-Agent': 'Skland/1.21.0 (com.hypergryph.skland; build:102100065; Android 34; ) Okhttp/4.11.0',
   'Accept-Encoding': 'gzip',
   'Connection': 'close',
   'Content-Type': 'application/json'
@@ -11,7 +11,7 @@ export const sign_header = {
   platform: '1',
   timestamp: '',
   dId: '',
-  vName: '1.5.1',
+  vName: '1.21.0',
 }
 
 const MILLISECOND_PER_SECOND = 1000

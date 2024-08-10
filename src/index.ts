@@ -1,5 +1,6 @@
 import { getPrivacyName } from './utils'
 import { SKLAND_BOARD_IDS, SKLAND_BOARD_NAME_MAPPING } from './constant'
+import { setTimeout } from 'node:timers/promises'
 import { attendance, auth, checkIn, getBinding, signIn } from './api'
 import { bark, serverChan } from './notifications'
 
@@ -53,7 +54,7 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
   const [combineMessage, excutePushMessage, addMessage] = createCombinePushMessage()
 
   const logginFailed = async (message: string) => {
-    combineMessage(`登录第${index}个账号失败，已跳过签到: ${message}`, true)
+    combineMessage(`登录第${index + 1}个账号失败，已跳过签到: ${message}`, true)
     await excutePushMessage()
   }
 
@@ -89,6 +90,8 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
       // 登岛检票 最后不会以错误结束进程
       combineMessage(`版面【${name}】登岛检票失败, 错误信息: ${data.message}`)
     }
+    // 多个角色之间的延时
+    await setTimeout(2986)
   }))
 
   addMessage('## 明日方舟签到')
