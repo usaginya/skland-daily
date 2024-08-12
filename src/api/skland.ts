@@ -1,31 +1,37 @@
-import { BINDING_URL, CRED_CODE_URL, SKLAND_ATTENDANCE_URL, SKLAND_CHECKIN_URL } from '../constant'
-import type { AttendanceResponse, BindingResponse, CredResponse, SklandBoard } from '../types'
-import { command_header, generateSignature } from '../utils'
+import { createFetch } from 'ofetch'
+import { ProxyAgent } from 'proxy-agent'
+import type { AttendanceResponse, BindingResponse, CredResponse, GetAttendanceResponse, SklandBoard } from '../types'
+import { command_header, onSignatureRequest } from '../utils'
+import { SKLAND_BOARD_IDS } from '../constant'
+
+const fetch = createFetch({
+  defaults: {
+    baseURL: 'https://zonai.skland.com',
+    onRequest: onSignatureRequest,
+    // @ts-expect-error ignore
+    agent: new ProxyAgent(),
+  },
+})
 
 /**
  * grant_code 获得森空岛用户的 token 等信息
  * @param grant_code 从 OAuth 接口获取的 grant_code
  */
 export async function signIn(grant_code: string) {
-  if (grant_code == null) return { cred: null, token: 'singIn(gran_code = null)' }
-  const response = await fetch(CRED_CODE_URL, {
-    method: 'POST',
-    headers: Object.assign({
-      'Content-Type': 'application/json; charset=utf-8',
-    }, command_header),
-    body: JSON.stringify({
-      code: grant_code,
-      kind: 1,
-    }),
-  })
-  const json = await response.json()
-  const data = json as CredResponse
-
-  if (data.code !== 0) {
-    data.data.cred = null
-    data.data.token = data.message
-    console.warn(JSON.stringify(json, null, 2))
-  }
+  const data = await fetch<CredResponse>(
+    '/api/v1/user/auth/generate_cred_by_code',
+    {
+      method: 'POST',
+      headers: command_header,
+      body: {
+        code: grant_code,
+        kind: 1,
+      },
+      onRequestError(ctx) {
+        console.error(`登录获取 cred 错误:${ctx.error.message}`)
+      },
+    },
+  ).catch(error => console.error('ofetch error:', error.data))
 
   return data.data
 }
@@ -37,39 +43,31 @@ export async function signIn(grant_code: string) {
  * @param token 森空岛用户的 token
  */
 export async function getBinding(cred: string, token: string) {
-  if (cred == null) {
-    return { list: [{ appCode: null, appName: 'getBinding(cred = null)' }] }
-  }
+  const data = await fetch<BindingResponse>(
+    '/api/v1/game/player/binding',
+    {
+      headers: { token, cred },
+      onRequestError(ctx) {
+        throw new Error(`获取绑定角色错误:${ctx.error.message}`)
+      },
+    },
+  ).catch(error => console.error('ofetch error:', error.data))
 
-  const url = new URL(BINDING_URL)
-  const [sign, headers] = generateSignature(token, url)
-  const requestOptions = {
-    headers: { ...headers, sign, cred },
-  }
-
-  let responseBody: string | null = null
-
-  try {
-    const response = await fetch(BINDING_URL, requestOptions)
-    responseBody = await response.text()
-    const json = JSON.parse(responseBody)
-    const data = json as BindingResponse
-
-    if (data.code !== 0) {
-      data.data[0].appCode = null
-      data.data[0].appName = data.message
-      console.warn(JSON.stringify(json, null, 2))
-    }
-    return data.data
-
-  } catch (error) {
-    if (responseBody) {
-      console.error('Response body:', responseBody)
-    }
-    throw error
-  }
+  return data.data
 }
 
+export async function getScoreIsCheckIn(cred: string, token: string) {
+  const data = await fetch<{ code: number, message: string, data: { list: { gameId: number, checked: 1 | 0 }[] } }>(
+    '/api/v1/score/ischeckin',
+    {
+      headers: Object.assign({ token, cred }, command_header),
+      query: {
+        gameIds: SKLAND_BOARD_IDS
+      }
+    },
+  )
+  return data
+}
 
 /**
  * 登岛检票
@@ -77,18 +75,16 @@ export async function getBinding(cred: string, token: string) {
  * @param token 森空岛用户的 token
  */
 export async function checkIn(cred: string, token: string, id: SklandBoard) {
-  const url = new URL(SKLAND_CHECKIN_URL)
-  const body = { gameId: id.toString() }
-  const [sign, cryptoHeaders] = generateSignature(token, url, body)
-  const headers = Object.assign(cryptoHeaders, { sign, cred, 'Content-Type': 'application/json;charset=utf-8' }, command_header)
-  const response = await fetch(
-    url,
-    { method: 'POST', headers, body: JSON.stringify(body) },
-  )
-  const data = await response.json() as { code: number, message: string, timestamp: string }
+  const data = await fetch<{ code: number, message: string, timestamp: string }>(
+    '/api/v1/score/checkin',
+    {
+      method: 'POST',
+      headers: Object.assign({ token, cred }, command_header),
+      body: { gameId: id.toString() },
+    },
+  ).catch(error => console.error('ofetch error:', error.data))
   return data
 }
-
 
 /**
  * 明日方舟每日签到
@@ -96,15 +92,31 @@ export async function checkIn(cred: string, token: string, id: SklandBoard) {
  * @param token 森空岛用户的 token
  */
 export async function attendance(cred: string, token: string, body: { uid: string, gameId: string }) {
-  const url = new URL(SKLAND_ATTENDANCE_URL)
-  const [sign, cryptoHeaders] = generateSignature(token, url, body)
-  const headers = Object.assign(cryptoHeaders, { sign, cred, 'Content-Type': 'application/json;charset=utf-8' }, command_header)
+  const record = await fetch<GetAttendanceResponse>(
+    '/api/v1/game/attendance',
+    {
+      headers: Object.assign({ token, cred }, command_header),
+      query: body,
+    },
+  ).catch(error => console.error('ofetch error:', error.data))
 
-  const response = await fetch(
-    SKLAND_ATTENDANCE_URL,
-    { method: 'POST', headers, body: JSON.stringify(body) },
-  )
-  const data = await response.json() as AttendanceResponse
-
-  return data
+  const todayAttended = record.data.records.find((i) => {
+    const today = new Date().setHours(0, 0, 0, 0)
+    return new Date(Number(i.ts) * 1000).setHours(0, 0, 0, 0) === today
+  })
+  if (todayAttended) {
+    // 今天已经签到过了
+    return false
+  }
+  else {
+    const data = await fetch<AttendanceResponse>(
+      '/api/v1/game/attendance',
+      {
+        method: 'POST',
+        headers: Object.assign({ token, cred }, command_header),
+        body,
+      },
+    ).catch(error => console.error('ofetch error:', error.data))
+    return data
+  }
 }

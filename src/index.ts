@@ -1,8 +1,9 @@
+import process from 'node:process'
+import { setTimeout } from 'node:timers/promises'
+import { attendance, auth, checkIn, getBinding, getScoreIsCheckIn, signIn } from './api'
+import { bark, serverChan } from './notifications'
 import { getPrivacyName } from './utils'
 import { SKLAND_BOARD_IDS, SKLAND_BOARD_NAME_MAPPING } from './constant'
-import { setTimeout } from 'node:timers/promises'
-import { attendance, auth, checkIn, getBinding, signIn } from './api'
-import { bark, serverChan } from './notifications'
 
 interface Options {
   /** server 酱推送功能的启用，false 或者 server 酱的token */
@@ -11,19 +12,22 @@ interface Options {
   withBark?: false | string
 }
 
-const status = {
+const Status = {
   /** 签到失败状态记录，false 表示没有失败，true 表示含有失败 */
-  checkInError: false
+  hasError: false
 }
 
 export async function doAttendanceForAccount(token: string, options: Options, accountCount: number, index: number) {
+  const { code } = await auth(token)
+  const { cred, token: signToken } = await signIn(code)
+  const { list } = await getBinding(cred, signToken)
+
   const createCombinePushMessage = () => {
     const messages: string[] = []
     const logger = (message: string, error?: boolean) => {
       messages.push(message)
       console[error ? 'error' : 'log'](message)
-      if (error && !status.checkInError)
-        status.checkInError = true
+      Status.hasError = error || Status.hasError
     }
     const push
       = async () => {
@@ -42,7 +46,7 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
           )
         }
         // quit with error on last account
-        if (status.checkInError && index >= accountCount)
+        if (Status.hasError && index >= accountCount)
           process.exit(1)
       }
     const add = (message: string) => {
@@ -53,66 +57,65 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
 
   const [combineMessage, excutePushMessage, addMessage] = createCombinePushMessage()
 
-  const logginFailed = async (message: string) => {
-    combineMessage(`登录第${index + 1}个账号失败，已跳过签到: ${message}`, true)
-    await excutePushMessage()
-  }
-
-  // 获取登录信息失败时，推送失败提示，然后跳过登录失败的账号并继续下一个账号
-  const { code, uid } = await auth(token, index)
-  if (code === null) {
-    await logginFailed(uid)
-    return
-  }
-
-  const { cred, token: signToken } = await signIn(code)
-  if (cred === null && signToken !== null) {
-    await logginFailed(signToken)
-    return
-  }
-
-  const { list } = await getBinding(cred, signToken)
-  if (list.length > 0 && list[0].appCode === null && list[0].appName !== null) {
-    await logginFailed(list[0].appName)
-    return
-  }
-
-
-  addMessage(`# 森空岛每日签到 \n\n> ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Shanghai' }).format(new Date())}`)
-  addMessage('## 森空岛各版面每日检票')
-  await Promise.all(SKLAND_BOARD_IDS.map(async (id) => {
-    const data = await checkIn(cred, signToken, id)
-    const name = SKLAND_BOARD_NAME_MAPPING[id]
-    if (data.message === 'OK' && data.code === 0) {
-      combineMessage(`版面【${name}】登岛检票成功`)
-    }
-    else {
-      // 登岛检票 最后不会以错误结束进程
-      combineMessage(`版面【${name}】登岛检票失败, 错误信息: ${data.message}`)
-    }
-    // 多个角色之间的延时
-    await setTimeout(2986)
-  }))
+  console.log(`准备签到第${index + 1}个账号`)
 
   addMessage('## 明日方舟签到')
   let successAttendance = 0
   const characterList = list.map(i => i.bindingList).flat()
   await Promise.all(characterList.map(async (character) => {
+    console.log(`将签到第${successAttendance + 1}个角色`)
     const data = await attendance(cred, signToken, {
       uid: character.uid,
       gameId: character.channelMasterId,
     })
-    console.log(`将签到第${successAttendance + 1}个角色`)
-    if (data.code === 0 && data.message === 'OK') {
-      const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到成功${`, 获得了${data.data.awards.map(a => `「${a.resource.name}」${a.count}个`).join(',')}`}`
-      combineMessage(msg)
-      combineMessage(`成功签到${successAttendance++}个角色`)
+    if (data) {
+      if (data.code === 0 && data.message === 'OK') {
+        const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到成功${`, 获得了${data.data.awards.map(a => `「${a.resource.name}」${a.count}个`).join(',')}`}`
+        combineMessage(msg)
+        successAttendance++
+      }
+      else {
+        const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到失败${`, 错误消息: ${data.message}\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``}`
+        combineMessage(msg, true)
+      }
+
+      // 多个角色之间的延时
+      await setTimeout(3000)
     }
     else {
-      const msg = `${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 签到失败${`, 错误消息: ${data.message}\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``}`
-      combineMessage(msg, true)
+      combineMessage(`${(Number(character.channelMasterId) - 1) ? 'B 服' : '官服'}角色 ${getPrivacyName(character.nickName)} 今天已经签到过了`)
     }
+
   }))
+  if (successAttendance !== 0)
+    combineMessage(`成功签到${successAttendance}个角色`)
+
+  addMessage(`# 森空岛每日签到 \n\n> ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Shanghai' }).format(new Date())}`)
+  addMessage('## 森空岛各版面每日检票')
+  const isCheckIn = await getScoreIsCheckIn(cred, signToken)
+
+  await Promise.all(
+    SKLAND_BOARD_IDS
+      .map(async (id) => {
+        // 过滤已经签到过的 
+        const name = SKLAND_BOARD_NAME_MAPPING[id]
+        if (isCheckIn.data.list.find(i => i.gameId === id)?.checked !== 1) {
+          const data = await checkIn(cred, signToken, id)
+
+          if (data.message === 'OK' && data.code === 0) {
+            combineMessage(`版面【${name}】登岛检票成功`)
+          }
+          else {
+            // 登岛检票 最后不会以错误结束进程
+            combineMessage(`版面【${name}】登岛检票失败, 错误信息: ${data.message}`)
+          }
+          // 多个登岛检票之间的延时
+          await setTimeout(3000)
+        } else {
+          combineMessage(`版面【${name}】今天已经登岛检票过了`)
+        }
+      })
+  )
 
   await excutePushMessage()
 }
