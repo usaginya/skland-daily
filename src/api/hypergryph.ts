@@ -18,7 +18,7 @@ export async function auth(token: string) {
     }),
   }).catch(error => console.error('ofetch error:', error.data))
 
-  if (data.status !== 0 || !data.data)
+  if (!data || data.status !== 0 || !data.data)
     console.error(`登录获取 cred 错误:${data.msg}`)
 
   return data.data
